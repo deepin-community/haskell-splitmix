@@ -57,9 +57,10 @@ module System.Random.SplitMix (
 import Data.Bits             (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.Bits.Compat      (countLeadingZeros, popCount, zeroBits)
 import Data.IORef            (IORef, atomicModifyIORef, newIORef)
-import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word             (Word32, Word64)
 import System.IO.Unsafe      (unsafePerformIO)
+
+import System.Random.SplitMix.Init
 
 #if defined(__HUGS__) || !MIN_VERSION_base(4,8,0)
 import Data.Word (Word)
@@ -67,14 +68,6 @@ import Data.Word (Word)
 
 #ifndef __HUGS__
 import Control.DeepSeq (NFData (..))
-#endif
-
-#ifdef MIN_VERSION_random
-import qualified System.Random as R
-#endif
-
-#if !__GHCJS__
-import System.CPUTime (cpuTimePrecision, getCPUTime)
 #endif
 
 -- $setup
@@ -293,10 +286,14 @@ shiftXorMultiply n k w = shiftXor n w `mult` k
 
 -- | /Bitmask with rejection/ method of generating subrange of 'Word32'.
 --
+-- @bitmaskWithRejection32 w32@ generates random numbers in closed-open
+-- range of @[0, w32)@.
+--
 -- @since 0.0.3
 bitmaskWithRejection32 :: Word32 -> SMGen -> (Word32, SMGen)
 bitmaskWithRejection32 0 = error "bitmaskWithRejection32 0"
 bitmaskWithRejection32 n = bitmaskWithRejection32' (n - 1)
+{-# INLINEABLE bitmaskWithRejection32 #-}
 
 -- | /Bitmask with rejection/ method of generating subrange of 'Word64'.
 --
@@ -310,8 +307,12 @@ bitmaskWithRejection32 n = bitmaskWithRejection32' (n - 1)
 bitmaskWithRejection64 :: Word64 -> SMGen -> (Word64, SMGen)
 bitmaskWithRejection64 0 = error "bitmaskWithRejection64 0"
 bitmaskWithRejection64 n = bitmaskWithRejection64' (n - 1)
+{-# INLINEABLE bitmaskWithRejection64 #-}
 
 -- | /Bitmask with rejection/ method of generating subrange of 'Word32'.
+--
+-- @bitmaskWithRejection32' w32@ generates random numbers in closed-closed
+-- range of @[0, w32]@.
 --
 -- @since 0.0.4
 bitmaskWithRejection32' :: Word32 -> SMGen -> (Word32, SMGen)
@@ -322,6 +323,7 @@ bitmaskWithRejection32' range = go where
            in if x' > range
               then go g'
               else (x', g')
+{-# INLINEABLE bitmaskWithRejection32' #-}
 
 -- | /Bitmask with rejection/ method of generating subrange of 'Word64'.
 --
@@ -340,6 +342,7 @@ bitmaskWithRejection64' range = go where
            in if x' > range
               then go g'
               else (x', g')
+{-# INLINEABLE bitmaskWithRejection64' #-}
 
 
 -------------------------------------------------------------------------------
@@ -373,9 +376,9 @@ unseedSMGen (SMGen seed gamma) = (seed, gamma)
 mkSMGen :: Word64 -> SMGen
 mkSMGen s = SMGen (mix64 s) (mixGamma (s `plus` goldenGamma))
 
--- | Initialize 'SMGen' using system time.
+-- | Initialize 'SMGen' using entropy available on the system (time, ...)
 initSMGen :: IO SMGen
-initSMGen = fmap mkSMGen mkSeedTime
+initSMGen = fmap mkSMGen initialSeed
 
 -- | Derive a new generator instance from the global 'SMGen' using 'splitSMGen'.
 newSMGen :: IO SMGen
@@ -384,28 +387,6 @@ newSMGen = atomicModifyIORef theSMGen splitSMGen
 theSMGen :: IORef SMGen
 theSMGen = unsafePerformIO $ initSMGen >>= newIORef
 {-# NOINLINE theSMGen #-}
-
-mkSeedTime :: IO Word64
-mkSeedTime = do
-    now <- getPOSIXTime
-    let lo = truncate now :: Word32
-#if __GHCJS__
-    let hi = lo
-#else
-    cpu <- getCPUTime
-    let hi = fromIntegral (cpu `div` cpuTimePrecision) :: Word32
-#endif
-    return $ fromIntegral hi `shiftL` 32 .|. fromIntegral lo
-
--------------------------------------------------------------------------------
--- System.Random
--------------------------------------------------------------------------------
-
-#ifdef MIN_VERSION_random
-instance R.RandomGen SMGen where
-    next = nextInt
-    split = splitSMGen
-#endif
 
 -------------------------------------------------------------------------------
 -- Hugs
