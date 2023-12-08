@@ -6,10 +6,10 @@ Section: haskell
 Build-Depends: debhelper (>= 10),
  haskell-devscripts-minimal | haskell-devscripts (>= 0.13),
  cdbs,
- ghc,
+ ghc (>= 9.4),
  ghc-prof,
 Build-Depends-Indep: ghc-doc,
-Standards-Version: 4.5.0
+Standards-Version: 4.6.2
 X-Description: fast splittable PRNG
  Pure Haskell implementation of SplitMix, a splittable
  pseudorandom number generator that is quite fast.
